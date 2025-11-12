@@ -190,9 +190,11 @@ async def burn_subtitles(
                 detail=f"FFmpeg processing failed: {error_msg}"
             )
         
-        # Always return URL - Move file to output directory
+        # Always return URL - Copy file to output directory
         final_path = OUTPUT_DIR / output_filename
-        shutil.move(str(output_path), str(final_path))
+        
+        # Use copy instead of move to avoid cross-device link errors
+        shutil.copy2(str(output_path), str(final_path))
         
         # Store in registry
         file_registry[job_id] = {
@@ -205,7 +207,7 @@ async def burn_subtitles(
         base_url = str(request.base_url).rstrip('/')
         download_url = f"{base_url}/download/{job_id}"
         
-        # Clean up temp files (keep only output)
+        # Clean up temp files (including the original output)
         shutil.rmtree(job_dir, ignore_errors=True)
         
         return JSONResponse({
