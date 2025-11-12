@@ -163,7 +163,8 @@ async def burn_subtitles(
             else:
                 output_filename = f"subtitled_{job_id[:8]}.mp4"
         
-        output_path = job_dir / output_filename
+        # Output directly to OUTPUT_DIR to avoid cross-device copy issues
+        output_path = OUTPUT_DIR / output_filename
         
         # Process video with ffmpeg
         try:
@@ -190,24 +191,18 @@ async def burn_subtitles(
                 detail=f"FFmpeg processing failed: {error_msg}"
             )
         
-        # Always return URL - Copy file to output directory
-        final_path = OUTPUT_DIR / output_filename
-        
-        # Use copy instead of move to avoid cross-device link errors
-        shutil.copy2(str(output_path), str(final_path))
-        
         # Store in registry
         file_registry[job_id] = {
             "filename": output_filename,
             "created_at": time.time(),
-            "path": final_path
+            "path": output_path
         }
         
         # Build download URL
         base_url = str(request.base_url).rstrip('/')
         download_url = f"{base_url}/download/{job_id}"
         
-        # Clean up temp files (including the original output)
+        # Clean up temp files
         shutil.rmtree(job_dir, ignore_errors=True)
         
         return JSONResponse({
