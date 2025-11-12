@@ -2,6 +2,7 @@ import os
 import ffmpeg
 import tempfile
 import shutil
+import httpx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +37,7 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "POST /burn-subtitles": "Upload video and SRT file to create subtitled video",
+            "POST /burn-subtitles-url": "Provide video and SRT URLs to create subtitled video",
             "GET /health": "Health check endpoint"
         }
     }
@@ -136,6 +138,123 @@ async def burn_subtitles(
             media_type="video/mp4",
             filename=output_filename,
             background=None  # We'll clean up manually after response
+        )
+        
+    except HTTPException:
+        # Clean up on error
+        if job_dir.exists():
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+        
+    except Exception as e:
+        # Clean up on error
+        if job_dir.exists():
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@app.post("/burn-subtitles-url")
+async def burn_subtitles_url(
+    video_url: str = Form(..., description="URL to video file"),
+    srt_url: str = Form(..., description="URL to SRT subtitle file"),
+    style: Optional[str] = Form(
+        "OutlineColour=&H40000000,BorderStyle=3",
+        description="FFmpeg subtitle style options"
+    ),
+    output_name: Optional[str] = Form(None, description="Custom output filename (without extension)")
+):
+    """
+    Burn SRT subtitles into a video file using URLs.
+    
+    - **video_url**: Direct URL to video file
+    - **srt_url**: Direct URL to SRT subtitle file
+    - **style**: Optional FFmpeg style string for subtitle appearance
+    - **output_name**: Optional custom name for output file
+    """
+    
+    # Generate unique ID for this job
+    job_id = str(uuid.uuid4())
+    job_dir = TEMP_DIR / job_id
+    job_dir.mkdir(exist_ok=True)
+    
+    video_path = None
+    srt_path = None
+    output_path = None
+    
+    try:
+        # Download video from URL
+        print(f"Downloading video from {video_url}...")
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            video_response = await client.get(video_url)
+            video_response.raise_for_status()
+            
+            # Determine file extension from URL or content-type
+            video_ext = ".mp4"  # default
+            if "." in video_url.split("/")[-1]:
+                video_ext = "." + video_url.split(".")[-1].split("?")[0]
+            
+            video_path = job_dir / f"input{video_ext}"
+            with open(video_path, "wb") as f:
+                f.write(video_response.content)
+        
+        # Download SRT from URL
+        print(f"Downloading SRT from {srt_url}...")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            srt_response = await client.get(srt_url)
+            srt_response.raise_for_status()
+            
+            srt_path = job_dir / "subtitles.srt"
+            with open(srt_path, "wb") as f:
+                f.write(srt_response.content)
+        
+        # Determine output filename
+        if output_name:
+            output_filename = f"{output_name}.mp4"
+        else:
+            output_filename = f"subtitled_{job_id[:8]}.mp4"
+        
+        output_path = job_dir / output_filename
+        
+        # Process video with ffmpeg
+        try:
+            # Use absolute paths - ffmpeg on Windows needs proper path format
+            video_path_str = str(video_path.absolute())
+            srt_path_str = str(srt_path.absolute())
+            output_path_str = str(output_path.absolute())
+            
+            video_input = ffmpeg.input(video_path_str)
+            audio = video_input.audio
+            
+            # Use filename= parameter for subtitles filter on Windows
+            ffmpeg.concat(
+                video_input.filter('subtitles', filename=srt_path_str, force_style=style),
+                audio,
+                v=1,
+                a=1
+            ).output(output_path_str).run(quiet=True, overwrite_output=True)
+            
+        except ffmpeg.Error as e:
+            error_msg = e.stderr.decode() if e.stderr else str(e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"FFmpeg processing failed: {error_msg}"
+            )
+        
+        # Return the processed video
+        return FileResponse(
+            path=output_path,
+            media_type="video/mp4",
+            filename=output_filename,
+            background=None
+        )
+        
+    except httpx.HTTPError as e:
+        # Clean up on error
+        if job_dir.exists():
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to download file: {str(e)}"
         )
         
     except HTTPException:
