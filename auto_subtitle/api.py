@@ -44,7 +44,7 @@ async def root():
         "message": "Subtitle Burner API",
         "version": "2.0.0",
         "endpoints": {
-            "POST /burn-subtitles": "Upload files OR provide URLs (supports mixed input: file + URL). Set return_url=true to get download URL instead of file",
+            "POST /burn-subtitles": "Upload files OR provide URLs. Returns download URL (file stored until server restart)",
             "POST /burn-subtitles-url": "Legacy URL-only endpoint (deprecated, use /burn-subtitles instead)",
             "GET /download/{job_id}": "Download a processed video by job ID",
             "GET /health": "Health check endpoint"
@@ -68,11 +68,10 @@ async def burn_subtitles(
         "OutlineColour=&H40000000,BorderStyle=3",
         description="FFmpeg subtitle style options"
     ),
-    output_name: Optional[str] = Form(None, description="Custom output filename (without extension)"),
-    return_url: Optional[bool] = Form(False, description="Return download URL instead of file")
+    output_name: Optional[str] = Form(None, description="Custom output filename (without extension)")
 ):
     """
-    Burn SRT subtitles into a video file. Supports mixed input (file upload + URL).
+    Burn SRT subtitles into a video file. Returns a download URL.
     
     - **video**: Video file to upload OR
     - **video_url**: URL to video file
@@ -80,8 +79,8 @@ async def burn_subtitles(
     - **srt_url**: URL to SRT file
     - **style**: Optional FFmpeg style string for subtitle appearance
     - **output_name**: Optional custom name for output file
-    - **return_url**: If true, returns JSON with download URL instead of file
     
+    Returns JSON with download URL. File will be deleted on server restart.
     You can mix and match: e.g., upload video + provide SRT URL
     """
     
@@ -191,41 +190,31 @@ async def burn_subtitles(
                 detail=f"FFmpeg processing failed: {error_msg}"
             )
         
-        # Return based on return_url parameter
-        if return_url:
-            # Move file to output directory
-            final_path = OUTPUT_DIR / output_filename
-            shutil.move(str(output_path), str(final_path))
-            
-            # Store in registry
-            file_registry[job_id] = {
-                "filename": output_filename,
-                "created_at": time.time(),
-                "path": final_path
-            }
-            
-            # Build download URL
-            base_url = str(request.base_url).rstrip('/')
-            download_url = f"{base_url}/download/{job_id}"
-            
-            # Clean up temp files (keep only output)
-            shutil.rmtree(job_dir, ignore_errors=True)
-            
-            return JSONResponse({
-                "success": True,
-                "job_id": job_id,
-                "download_url": download_url,
-                "filename": output_filename,
-                "message": "Video processed successfully. File will be deleted on server restart."
-            })
-        else:
-            # Return file directly
-            return FileResponse(
-                path=output_path,
-                media_type="video/mp4",
-                filename=output_filename,
-                background=None
-            )
+        # Always return URL - Move file to output directory
+        final_path = OUTPUT_DIR / output_filename
+        shutil.move(str(output_path), str(final_path))
+        
+        # Store in registry
+        file_registry[job_id] = {
+            "filename": output_filename,
+            "created_at": time.time(),
+            "path": final_path
+        }
+        
+        # Build download URL
+        base_url = str(request.base_url).rstrip('/')
+        download_url = f"{base_url}/download/{job_id}"
+        
+        # Clean up temp files (keep only output)
+        shutil.rmtree(job_dir, ignore_errors=True)
+        
+        return JSONResponse({
+            "success": True,
+            "job_id": job_id,
+            "download_url": download_url,
+            "filename": output_filename,
+            "message": "Video processed successfully. File will be deleted on server restart."
+        })
         
     except httpx.HTTPError as e:
         # Clean up on error
