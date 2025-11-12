@@ -3,12 +3,13 @@ import ffmpeg
 import tempfile
 import shutil
 import httpx
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import uuid
 from pathlib import Path
+import time
 
 app = FastAPI(
     title="Subtitle Burner API",
@@ -29,6 +30,13 @@ app.add_middleware(
 TEMP_DIR = Path(tempfile.gettempdir()) / "subtitle_api"
 TEMP_DIR.mkdir(exist_ok=True)
 
+# Create output directory for downloadable files
+OUTPUT_DIR = TEMP_DIR / "outputs"
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+# Store file metadata (job_id -> {filename, created_at, path})
+file_registry = {}
+
 
 @app.get("/")
 async def root():
@@ -36,8 +44,9 @@ async def root():
         "message": "Subtitle Burner API",
         "version": "2.0.0",
         "endpoints": {
-            "POST /burn-subtitles": "Upload files OR provide URLs (supports mixed input: file + URL)",
+            "POST /burn-subtitles": "Upload files OR provide URLs (supports mixed input: file + URL). Set return_url=true to get download URL instead of file",
             "POST /burn-subtitles-url": "Legacy URL-only endpoint (deprecated, use /burn-subtitles instead)",
+            "GET /download/{job_id}": "Download a processed video by job ID",
             "GET /health": "Health check endpoint"
         }
     }
@@ -50,6 +59,7 @@ async def health_check():
 
 @app.post("/burn-subtitles")
 async def burn_subtitles(
+    request: Request,
     video: Optional[UploadFile] = File(None, description="Video file (mp4, avi, mov, etc.)"),
     srt: Optional[UploadFile] = File(None, description="SRT subtitle file"),
     video_url: Optional[str] = Form(None, description="URL to video file (alternative to upload)"),
@@ -58,7 +68,8 @@ async def burn_subtitles(
         "OutlineColour=&H40000000,BorderStyle=3",
         description="FFmpeg subtitle style options"
     ),
-    output_name: Optional[str] = Form(None, description="Custom output filename (without extension)")
+    output_name: Optional[str] = Form(None, description="Custom output filename (without extension)"),
+    return_url: Optional[bool] = Form(False, description="Return download URL instead of file")
 ):
     """
     Burn SRT subtitles into a video file. Supports mixed input (file upload + URL).
@@ -69,6 +80,7 @@ async def burn_subtitles(
     - **srt_url**: URL to SRT file
     - **style**: Optional FFmpeg style string for subtitle appearance
     - **output_name**: Optional custom name for output file
+    - **return_url**: If true, returns JSON with download URL instead of file
     
     You can mix and match: e.g., upload video + provide SRT URL
     """
@@ -179,13 +191,41 @@ async def burn_subtitles(
                 detail=f"FFmpeg processing failed: {error_msg}"
             )
         
-        # Return the processed video
-        return FileResponse(
-            path=output_path,
-            media_type="video/mp4",
-            filename=output_filename,
-            background=None
-        )
+        # Return based on return_url parameter
+        if return_url:
+            # Move file to output directory
+            final_path = OUTPUT_DIR / output_filename
+            shutil.move(str(output_path), str(final_path))
+            
+            # Store in registry
+            file_registry[job_id] = {
+                "filename": output_filename,
+                "created_at": time.time(),
+                "path": final_path
+            }
+            
+            # Build download URL
+            base_url = str(request.base_url).rstrip('/')
+            download_url = f"{base_url}/download/{job_id}"
+            
+            # Clean up temp files (keep only output)
+            shutil.rmtree(job_dir, ignore_errors=True)
+            
+            return JSONResponse({
+                "success": True,
+                "job_id": job_id,
+                "download_url": download_url,
+                "filename": output_filename,
+                "message": "Video processed successfully. File will be deleted on server restart."
+            })
+        else:
+            # Return file directly
+            return FileResponse(
+                path=output_path,
+                media_type="video/mp4",
+                filename=output_filename,
+                background=None
+            )
         
     except httpx.HTTPError as e:
         # Clean up on error
@@ -207,6 +247,30 @@ async def burn_subtitles(
         if job_dir.exists():
             shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@app.get("/download/{job_id}")
+async def download_file(job_id: str):
+    """
+    Download a processed video file by job ID.
+    Files are temporary and will be deleted on server restart.
+    """
+    if job_id not in file_registry:
+        raise HTTPException(status_code=404, detail="File not found or expired")
+    
+    file_info = file_registry[job_id]
+    file_path = file_info["path"]
+    
+    if not file_path.exists():
+        # Clean up registry if file is missing
+        del file_registry[job_id]
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        media_type="video/mp4",
+        filename=file_info["filename"]
+    )
 
 
 @app.post("/burn-subtitles-url")
