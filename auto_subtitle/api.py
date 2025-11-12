@@ -163,6 +163,9 @@ async def burn_subtitles(
             else:
                 output_filename = f"subtitled_{job_id[:8]}.mp4"
         
+        # Ensure OUTPUT_DIR exists (in case it was deleted)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        
         # Output directly to OUTPUT_DIR to avoid cross-device copy issues
         output_path = OUTPUT_DIR / output_filename
         
