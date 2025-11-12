@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "ffmpeg"]
-
-[phases.install]
-cmds = ["pip install -r requirements-api.txt"]
+nixPkgs = ["ffmpeg"]
 
 [start]
 cmd = "uvicorn auto_subtitle.api:app --host 0.0.0.0 --port $PORT"
