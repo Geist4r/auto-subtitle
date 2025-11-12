@@ -2,6 +2,11 @@
 
 This repository uses `ffmpeg` and [OpenAI's Whisper](https://openai.com/blog/whisper) to automatically generate and overlay subtitles on any video.
 
+## 🚀 New Features
+
+- **FastAPI REST API**: Deploy as a web service on Railway or any cloud platform
+- **Burn SRT Command**: Quickly add existing SRT subtitles to videos without AI processing
+
 ## Installation
 
 To get started, you'll need Python 3.7 or newer. Install the binary by running the following command:
@@ -38,6 +43,44 @@ Adding `--task translate` will translate the subtitles into English:
 Run the following to view all available options:
 
     auto_subtitle --help
+
+## Burn Existing SRT Subtitles
+
+If you already have an SRT file and just want to add it to your video (without AI transcription):
+
+    burn_srt video.mp4 subtitles.srt -o output/
+
+See [BURN_SRT_USAGE.md](BURN_SRT_USAGE.md) for more details.
+
+## 🌐 REST API
+
+Deploy this as a web service! Perfect for integrating subtitle burning into your applications.
+
+### Quick Start (Local)
+
+```bash
+# Install API dependencies
+pip install -r requirements-api.txt
+
+# Run the API
+python -m auto_subtitle.api
+```
+
+Visit `http://localhost:8000/docs` for interactive API documentation.
+
+### Deploy to Railway
+
+1. Click the button below or push to GitHub
+2. Railway will automatically detect and deploy the API
+3. FFmpeg is automatically installed via `nixpacks.toml`
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new)
+
+See [API_USAGE.md](API_USAGE.md) for complete API documentation, examples, and deployment guide.
+
+### Test the API
+
+Open `test_client.html` in your browser for a simple web interface to test the API.
 
 ## License
 

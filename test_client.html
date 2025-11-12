@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subtitle Burner API - Test Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        input[type="file"]:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 2px solid #90caf9;
+            display: block;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            border: 2px solid #81c784;
+            display: block;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 2px solid #ef5350;
+            display: block;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .progress-bar.active {
+            display: block;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            animation: progress 2s ease-in-out infinite;
+        }
+        
+        @keyframes progress {
+            0% { width: 0%; }
+            50% { width: 100%; }
+            100% { width: 0%; }
+        }
+        
+        .api-url-group {
+            margin-bottom: 30px;
+        }
+        
+        .file-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Subtitle Burner</h1>
+        <p class="subtitle">Burn SRT subtitles into your videos</p>
+        
+        <form id="uploadForm">
+            <div class="form-group api-url-group">
+                <label for="apiUrl">API URL</label>
+                <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+                <div class="hint">Change this to your Railway URL when deployed</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="videoFile">Video File *</label>
+                <input type="file" id="videoFile" accept="video/*" required>
+                <div class="file-info" id="videoInfo"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="srtFile">SRT Subtitle File *</label>
+                <input type="file" id="srtFile" accept=".srt" required>
+                <div class="file-info" id="srtInfo"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="outputName">Output Name (optional)</label>
+                <input type="text" id="outputName" placeholder="my_video">
+                <div class="hint">Leave empty to auto-generate name</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="style">Subtitle Style (optional)</label>
+                <input type="text" id="style" value="OutlineColour=&H40000000,BorderStyle=3" placeholder="FontSize=24,PrimaryColour=&H00FFFF">
+                <div class="hint">FFmpeg subtitle style options</div>
+            </div>
+            
+            <button type="submit" id="submitBtn">🔥 Burn Subtitles</button>
+            
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-bar-fill"></div>
+            </div>
+            
+            <div class="status" id="status"></div>
+        </form>
+    </div>
+    
+    <script>
+        const form = document.getElementById('uploadForm');
+        const status = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const submitBtn = document.getElementById('submitBtn');
+        const videoFile = document.getElementById('videoFile');
+        const srtFile = document.getElementById('srtFile');
+        const videoInfo = document.getElementById('videoInfo');
+        const srtInfo = document.getElementById('srtInfo');
+        
+        // Show file size info
+        videoFile.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                const size = (e.target.files[0].size / 1024 / 1024).toFixed(2);
+                videoInfo.textContent = `Selected: ${e.target.files[0].name} (${size} MB)`;
+            }
+        });
+        
+        srtFile.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                const size = (e.target.files[0].size / 1024).toFixed(2);
+                srtInfo.textContent = `Selected: ${e.target.files[0].name} (${size} KB)`;
+            }
+        });
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const apiUrl = document.getElementById('apiUrl').value;
+            const video = videoFile.files[0];
+            const srt = srtFile.files[0];
+            const outputName = document.getElementById('outputName').value;
+            const style = document.getElementById('style').value;
+            
+            if (!video || !srt) {
+                showStatus('error', 'Please select both video and SRT files');
+                return;
+            }
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('video', video);
+            formData.append('srt', srt);
+            if (outputName) formData.append('output_name', outputName);
+            if (style) formData.append('style', style);
+            
+            // Update UI
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Processing...';
+            progressBar.classList.add('active');
+            showStatus('info', 'Uploading files and processing video... This may take a while.');
+            
+            try {
+                const response = await fetch(`${apiUrl}/burn-subtitles`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to process video');
+                }
+                
+                // Download the result
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = outputName ? `${outputName}.mp4` : 'subtitled_video.mp4';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showStatus('success', '✅ Video processed successfully! Download started.');
+                
+            } catch (error) {
+                showStatus('error', `❌ Error: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🔥 Burn Subtitles';
+                progressBar.classList.remove('active');
+            }
+        });
+        
+        function showStatus(type, message) {
+            status.className = `status ${type}`;
+            status.textContent = message;
+        }
+    </script>
+</body>
+</html>
